@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Live Chat in PiP</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        #chatBox {
+            width: 300px;
+            height: 400px;
+            overflow-y: scroll;
+            border: 1px solid #ccc;
+            padding: 10px;
+            background-color: #f9f9f9;
+            margin-top: 20px;
+        }
+        #videoContainer {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 20px;
+        }
+        #video {
+            width: 600px;
+            height: 400px;
+        }
+    </style>
+</head>
+<body>
+    <h1>YouTube Live Stream Chat in PiP</h1>
+    <input type="text" id="liveLink" placeholder="Enter YouTube Live Link" />
+    <button id="fetchButton">Fetch Live Chat</button>
+    
+    <div id="videoContainer">
+        <video id="video" controls autoplay>
+            <!-- Default fallback video URL will be replaced -->
+            <source src="" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
+    </div>
+    
+    <div id="chatBox"></div>
+
+    <script>
+        const apiKey = 'YOUR_API_KEY'; // Replace with your YouTube API key
+        const fetchButton = document.getElementById('fetchButton');
+        const liveLinkInput = document.getElementById('liveLink');
+        const videoElement = document.getElementById('video');
+        const chatBox = document.getElementById('chatBox');
+
+        // Event listener for the button to fetch live chat
+        fetchButton.addEventListener('click', async () => {
+            const liveUrl = liveLinkInput.value;
+            const videoId = getYouTubeVideoId(liveUrl);
+            
+            if (videoId) {
+                const liveChatId = await getLiveChatId(videoId);
+                fetchLiveChatMessages(liveChatId);
+                updateVideoSource(videoId);
+            } else {
+                alert('Please enter a valid YouTube live URL.');
+            }
+        });
+
+        // Extract YouTube Video ID from the URL
+        function getYouTubeVideoId(url) {
+            const regex = /(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+            const match = url.match(regex);
+            return match ? match[1] : null;
+        }
+
+        // Fetch Live Chat ID for the given video ID
+        async function getLiveChatId(videoId) {
+            const response = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails&id=${videoId}&key=${apiKey}`);
+            const data = await response.json();
+            return data.items[0]?.liveStreamingDetails?.activeLiveChatId;
+        }
+
+        // Fetch live chat messages
+        async function fetchLiveChatMessages(liveChatId) {
+            chatBox.innerHTML = ''; // Clear existing chat messages
+            let nextPageToken = '';
+
+            while (true) {
+                const response = await fetch(`https://www.googleapis.com/youtube/v3/liveChat/messages?liveChatId=${liveChatId}&part=snippet,authorDetails&pageToken=${nextPageToken}&key=${apiKey}`);
+                const data = await response.json();
+                
+                data.items.forEach(item => {
+                    const message = item.snippet.displayMessage;
+                    const author = item.authorDetails.displayName;
+                    chatBox.innerHTML += `<p><strong>${author}:</strong> ${message}</p>`;
+                });
+                
+                nextPageToken = data.nextPageToken;
+                if (!nextPageToken) break; // Stop if there are no more pages of messages
+                await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before fetching more messages
+            }
+        }
+
+        // Update the video source for the live stream
+        function updateVideoSource(videoId) {
+            const videoUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1`;
+            videoElement.src = videoUrl;
+        }
+
+        // PiP functionality
+        videoElement.addEventListener('click', async () => {
+            if (document.pictureInPictureEnabled && !document.pictureInPictureElement) {
+                try {
+                    await videoElement.requestPictureInPicture();
+                } catch (error) {
+                    console.error('Error during PiP:', error);
+                }
+            } else if (document.pictureInPictureElement) {
+                await document.exitPictureInPicture();
+            }
+        });
+    </script>
+</body>
+</html>
